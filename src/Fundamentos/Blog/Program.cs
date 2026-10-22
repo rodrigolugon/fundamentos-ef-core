@@ -12,48 +12,72 @@ namespace Blog
         static void Main(string[] args)
         {
             Console.OutputEncoding = Encoding.UTF8;
-            var slugs = new[] { "ef-dotnet", "ef-aspnet", "ef-aspnetcore" };
+            using var context = new BlogDataContext();
+            var postSlug = "comecando-com-ef-core";
 
-            using (var context = new BlogDataContext())
+            // 0. Limpa só os dados deste teste (Post primeiro, porque depende dos outros)
+            context.Posts.RemoveRange(context.Posts.Where(x => x.Slug == postSlug).ToList());
+            context.SaveChanges();
+            context.Users.RemoveRange(context.Users.Where(x => x.Slug == "maria-silva-ef").ToList());
+            context.Categories.RemoveRange(context.Categories.Where(x => x.Slug == "backend-ef").ToList());
+            context.SaveChanges();
+
+            // 1. CREATE: um Post que já traz autor e categoria novos
+            var user = new User
             {
-                // 0. Limpa só as tags deste teste, para poder rodar várias vezes
-                context.Tags.RemoveRange(context.Tags.Where(x => slugs.Contains(x.Slug)).ToList());
-                context.SaveChanges();
+                Name = "Maria Silva",
+                Slug = "maria-silva-ef",
+                Email = "maria.ef@exemplo.com",
+                Bio = "Desenvolvedora .NET",
+                Image = "https://exemplo.com/maria.png",
+                PasswordHash = "hash-de-exemplo"
+            };
+            var category = new Category { Name = "Backend", Slug = "backend-ef" };
+            var post = new Post
+            {
+                Author = user,
+                Category = category,
+                Title = "Começando com EF Core",
+                Summary = "Neste artigo vamos aprender EF Core",
+                Body = "<p>Hello world</p>",
+                Slug = postSlug,
+                CreateDate = DateTime.Now,
+                LastUpdateDate = DateTime.Now
+            };
+            context.Posts.Add(post); // o EF também insere o autor e a categoria
+            context.SaveChanges();
+            Console.WriteLine($"[CREATE] Post \"{post.Title}\" criado (Id {post.Id})");
 
-                // 1. CREATE
-                var tag = new Tag { Name = ".NET", Slug = "ef-dotnet" };
-                var tag2 = new Tag { Name = "ASP.NET", Slug = "ef-aspnet" };
-                context.Tags.Add(tag);
-                context.Tags.Add(tag2);
-                context.SaveChanges();
-                Console.WriteLine($"[CREATE] Tags criadas: Id {tag.Id} (.NET) e Id {tag2.Id} (ASP.NET)");
+            // 2. READ com Include (traz autor e categoria junto)
+            var posts = context
+                .Posts
+                .AsNoTracking()
+                .Include(x => x.Author)
+                .Include(x => x.Category)
+                .Where(x => x.Slug == postSlug)
+                .ToList();
+            foreach (var item in posts)
+                Console.WriteLine($"[READ] {item.Title} por {item.Author.Name} em {item.Category.Name}");
 
-                // 2. READ (AsNoTracking: só leitura, o EF não acompanha mudanças)
-                var tags = context.Tags.AsNoTracking().Where(x => slugs.Contains(x.Slug)).ToList();
-                Console.WriteLine($"[READ] {tags.Count} tag(s) do teste:");
-                foreach (var item in tags)
-                    Console.WriteLine($"  {item.Id} - {item.Name} ({item.Slug})");
+            // 3. UPDATE: precisa de tracking (sem AsNoTracking)
+            var postToUpdate = context
+                .Posts
+                .Include(x => x.Author)
+                .Include(x => x.Category)
+                .FirstOrDefault(x => x.Slug == postSlug);
+            postToUpdate.Author.Name = "Joana Souza";
+            context.Posts.Update(postToUpdate);
+            context.SaveChanges();
+            Console.WriteLine($"[UPDATE] Autor renomeado para: {postToUpdate.Author.Name}");
 
-                // 3. UPDATE (sem AsNoTracking: o EF precisa acompanhar a mudança)
-                var tagToUpdate = context.Tags.FirstOrDefault(x => x.Id == tag2.Id);
-                tagToUpdate.Name = "ASP.NET Core";
-                tagToUpdate.Slug = "ef-aspnetcore";
-                context.Update(tagToUpdate);
-                context.SaveChanges();
-                Console.WriteLine($"[UPDATE] Id {tagToUpdate.Id} agora é: {tagToUpdate.Name} ({tagToUpdate.Slug})");
-
-                // 4. DELETE
-                var tagToDelete = context.Tags.FirstOrDefault(x => x.Id == tag.Id);
-                context.Remove(tagToDelete);
-                context.SaveChanges();
-                Console.WriteLine($"[DELETE] Tag Id {tag.Id} removida");
-
-                // 5. READ final
-                var remaining = context.Tags.AsNoTracking().Where(x => slugs.Contains(x.Slug)).ToList();
-                Console.WriteLine($"[READ] {remaining.Count} tag(s) restante(s):");
-                foreach (var item in remaining)
-                    Console.WriteLine($"  {item.Id} - {item.Name} ({item.Slug})");
-            }
+            // 4. READ final
+            var updated = context
+                .Posts
+                .AsNoTracking()
+                .Include(x => x.Author)
+                .Include(x => x.Category)
+                .First(x => x.Slug == postSlug);
+            Console.WriteLine($"[READ] {updated.Title} por {updated.Author.Name} em {updated.Category.Name}");
         }
     }
 }
